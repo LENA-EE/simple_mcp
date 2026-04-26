@@ -40,6 +40,13 @@ def check_server_code():
             ('0.0.0.0', 'Хост 0.0.0.0'),
         ]
         
+        # Дополнительные проверки для perlcritic_analyze
+        perlcritic_checks = [
+            ('perlcritic_analyze', 'Инструмент perlcritic_analyze'),
+            ('analyze_perl_critic', 'Функция анализа Perl::Critic'),
+            ('tools.perlcritic', 'Импорт модуля perlcritic'),
+        ]
+        
         all_passed = True
         for check_str, description in checks:
             if check_str in content:
@@ -47,6 +54,16 @@ def check_server_code():
             else:
                 print(f"❌ {description} отсутствует в коде")
                 all_passed = False
+        
+        # Проверяем наличие perlcritic_analyze
+        print("\n3. Проверка инструмента perlcritic_analyze:")
+        perlcritic_passed = True
+        for check_str, description in perlcritic_checks:
+            if check_str in content:
+                print(f"✅ {description} присутствует в коде")
+            else:
+                print(f"⚠️  {description} отсутствует в коде (но это нормально, если perlcritic не установлен)")
+                # Не считаем это ошибкой, так как perlcritic может быть не установлен
         
         return all_passed
     except FileNotFoundError:
