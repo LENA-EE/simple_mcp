@@ -4,11 +4,11 @@ MCP-сервер для анализа Perl кода с помощью Perl::Cri
 
 ## Инструменты
 
-### `drospr`
+### `DROSPR_JARVIS`
 Тестовый инструмент - возвращает приветственное сообщение.
 
 ```json
-{"method": "tools/call", "params": {"name": "drospr", "arguments": {}}}
+{"method": "tools/call", "params": {"name": "DROSPR_JARVIS", "arguments": {}}}
 ```
 Результат: `"Привет от MCP ДРОСПР! :)"`
 
@@ -95,13 +95,13 @@ LLM: Отправляю в MCP:
 docker pull lenchik8/simple_mcp:latest
 
 # Запустить
-docker run -d --name mcp-drospr -p 8000:8000 lenchik8/simple_mcp:latest
+docker run -d --name mcp-DROSPR_JARVIS -p 8000:8000 lenchik8/simple_mcp:latest
 ```
 
 ### Локальная сборка
 ```bash
-docker build -t mcp-drospr .
-docker run -p 8000:8000 mcp-drospr
+docker build -t mcp-DROSPR_JARVIS .
+docker run -p 8000:8000 mcp-DROSPR_JARVIS
 ```
 
 ### Из исходников
@@ -113,7 +113,7 @@ python server.py
 ## Структура проекта
 
 ```
-mcp_drospr/
+mcp_DROSPR_JARVIS/
 ├── server.py          # FastAPI сервер
 ├── tools/
 │   └── perlcritic.py  # Модуль анализа Perl::Critic
@@ -127,7 +127,7 @@ mcp_drospr/
 ```json
 {
   "mcpServers": {
-    "drospr": {
+    "DROSPR_JARVIS": {
       "url": "http://<IP>:8000",
       "transport": "sse"
     }
