@@ -25,6 +25,72 @@ app = FastAPI(title="MCP DROSPR Server")
 connections = {}
 
 
+def get_recommendation(policy):
+    """Возвращает рекомендацию на русском языке для каждой policy."""
+    recs = {
+        "RequireTidyCode": "Отформатируйте код с помощью perltidy",
+        "RequireExplicitPackage": "Добавьте явный package в начале файла: 'package MyApp; use strict; use warnings;'",
+        "RequireVersionVar": "Добавьте переменную версии: our $VERSION = '1.00';",
+        "RequireCheckedSyscalls": "Проверяйте возвращаемое значение или игнорируйте: eval { ... } или do { ... } or die",
+        "RequireEndWithOne": "Файл должен заканчиваться на '1;', чтобы модуль возвращал истину",
+        "ProhibitTwoArgOpen": "Используйте трехаргументный open: open my $fh, '<', $filename",
+        "ProhibitBacktickCommands": "Избегайте обратных кавычек, используйте IPC::Open2/3",
+        "ProhibitBooleanGrep": "grep возвращает список, используйте его в list context или проверяйте элементы иначе",
+        "RequireBarewordIncludes": "Используйте короткие имена модулей в include: 'use My::Module;' вместо полного пути",
+        "ProhibitMagicNumbers": "Используйте константы вместо чисел: my $MAX = 100;",
+        "RequireUpperCaseHashKeys": "Ключи хеша должны быть в верхнем регистре: 'MyKey' instead of 'mykey'",
+        "ProhibitStringySplit": "Используйте split с явным списком: split / /, $string вместо split",
+        "ProhibitUnusedVariables": "Удалите неиспользуемые переменные или используйте их",
+        "ProhibitLeadingZeros": "Уберите ведущие нули: 007 -> 7, 012 -> 10",
+        "RequireFlags": "Добавьте use flags ':runtime'; и используйте flags в подпрограммах",
+        "ProhibitBuiltinRefs": "Не используйте ref() как функцию, используйте ref($var)",
+        "RequireScalarStorage": "Явно укажите скалярное хранилище: $var = \\'test';",
+        "ProhibitLaxComments": "Используйте '# POD =cut' для документирования, не комментарии в POD",
+        "RequireDeterministicSorting": "Используйте явную функцию сортировки: sort { $a cmp $b } @list",
+        "ProhibitCommentedOutCode": "Удалите закомментированный код",
+        "RequireUseStrict": "Добавьте 'use strict;' в начале файла",
+        "RequireUseWarnings": "Добавьте 'use warnings;' в начале файла",
+        "ProhibitBarewordRegex": "Используйте qr// для регулярок: my $re = qr/pattern/;",
+        "ProhibitComplexRegexes": "Упростите регулярное выражение или используйте named regex",
+        "ProhibitEmptyCase": "Удалите пустой switch/case или добавьте код",
+        "ProhibitEvilMaintenance": "Не используйте флаги обслуживания (только для разработки)",
+        "ProhibitExcessMaintainedCode": "Удалите устаревший код обслуживания",
+        "ProhibitLowPrecedenceMath": "Используйте скобки для математических операций: ($a + $b) * $c",
+        "ProhibitMixedCaseVars": "Используйте один стиль именования переменных: $my_var или $MyVar",
+        "ProhibitMultipleCalls": "Не вызывайте несколько раз то же самое",
+        "ProhibitNoWarnings": "Не отключайте warnings без крайней необходимости",
+        "ProhibitNumericStrStr": "Используйте строковые операции для строк, numeric для чисел",
+        "ProhibitOneArgDiamond": "Используйте @ARGV явно: while (my $file = shift @ARGV)",
+        "ProhibitParenUnion": "Хотя бы одно условие верно: ($a || $b || $c)",
+        "ProhibitPostfixControls": "Используйте блок { } вокруг postfix if/unless",
+        "ProhibitPrivateSubs": "Не вызывайте приватные субрутины: _private() -> private()",
+        "ProhibitRegexpMatchArgs": "Используйте m// без аргументов: m/$pattern/ вместо m/$pattern/, $str",
+        "ProhibitSmart::": "Не используйте Smart::, используйте if/elsif/else",
+        "ProhibitUnlessBlocks": "Используйте if вместо unless",
+        "ProhibitUntilBlocks": "Используйте while вместо until, поменяв условие",
+        "RequireBarewordReferences": "Используйте \\$var для ссылок",
+        "RequireBlockGrep": "Используйте { } в grep: grep { ... } @list",
+        "RequireBlockMap": "Используйте { } в map: map { ... } @list",
+        "RequireCapitalConfiguration": "Конфигурация должна быть в верхнем регистре",
+        "RequireCharacterClassML": "Используйте [a-z] вместо [:lower:]",
+        "RequireEncodingWithUTF8": "Используйте 'use utf8;' и кодировку UTF-8",
+        "RequireFiveDotZero": "Минимальная версия Perl 5.0",
+        "RequireLexicalDynamic": "Используйте my для динамических переменных: my $var",
+        "RequirePackagedVars": "Используйте Exporter или Object-Perl для экспорта переменных",
+        "RequireVersionSpecificity": "Требуйте минимальную версию Perl: use 5.010;",
+        "ProhibitVaryingStrings": "Не меняйте length строки в регулярке",
+        "ProhibitVoidSafes": "Удалите неиспользуемые return или use $x if 0;",
+        "ProhibitUniversalRefs": "Не используйте универсальные ссылки: \\$var, \\@arr, \\%hash",
+        "ProhibitExplicitReturn": "Возвращайте явно: return @result;",
+        "ProhibitExitWithoutSeparator": "Используйте separators: exit() if $cond; или exit $code;",
+    }
+    # Match partial policy name
+    for key, val in recs.items():
+        if key.lower() in policy.lower() or policy.lower() in key.lower():
+            return val
+    return "Исправьте согласно требованиям Perl Best Practices"
+
+
 def handle_mcp_request(request_data):
     """Обрабатывает MCP запросы."""
     try:
@@ -58,17 +124,13 @@ def handle_mcp_request(request_data):
             if PERLCRITIC_AVAILABLE:
                 tools.append({
                     "name": "perlcritic_analyze",
-                    "description": "Анализирует Perl код с помощью Perl::Critic и сохраняет отчет в JSON файл",
+                    "description": "Анализирует Perl код с помощью Perl::Critic. Output: группировка по Severity (1-5), с номерами строк и рекомендациями на русском.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
-                            "target": {
-                                "type": "string",
-                                "description": "Путь к файлу или директории для анализа"
-                            },
                             "code": {
                                 "type": "string",
-                                "description": "Perl код напрямую (альтернатива target)"
+                                "description": "REQUIRED: Pass FULL code. DO NOT TRUNCATE - send entire file content."
                             },
                             "filename": {
                                 "type": "string",
@@ -76,7 +138,7 @@ def handle_mcp_request(request_data):
                             },
                             "severity": {
                                 "type": "integer",
-                                "description": "Уровень строгости 1-5 (1 - самый строгий, 5 - мягкий)",
+                                "description": "REQUIRED: Use severity=1 (most strict, shows ALL problems). 1=САМЫЙ СТРОГИЙ, 5=Только критические.",
                                 "default": 1,
                                 "minimum": 1,
                                 "maximum": 5
@@ -97,7 +159,7 @@ def handle_mcp_request(request_data):
                                 "default": False
                             }
                         },
-                        "required": ["target"]
+                        "required": ["code"]
                     }
                 })
             
@@ -117,7 +179,6 @@ def handle_mcp_request(request_data):
                 }
             elif tool_name == "perlcritic_analyze" and PERLCRITIC_AVAILABLE:
                 arguments = params.get("arguments", {})
-                target = arguments.get("target")
                 code = arguments.get("code")
                 filename = arguments.get("filename")
                 severity = arguments.get("severity", 1)
@@ -125,16 +186,20 @@ def handle_mcp_request(request_data):
                 statistics = arguments.get("statistics", True)
                 count_only = arguments.get("count_only", False)
                 
-                if not target and not code:
-                    return {"error": {"code": -32602, "message": "Missing required parameter: target or code"}}
+                if not code:
+                    return {
+                        "content": [{
+                            "type": "text",
+                            "text": "ERROR: Missing required parameter 'code'. Pass the Perl code as a string to analyze."
+                        }]
+                    }
                 
-                # Выполняем анализ Perl::Critic
+# Выполняем анализ Perl::Critic
                 result = analyze_perl_critic(
-                    target=target,
                     code=code,
                     filename=filename,
-                    recursive=recursive,
                     severity=severity,
+                    recursive=recursive,
                     statistics=statistics,
                     count_only=count_only
                 )
@@ -151,44 +216,91 @@ def handle_mcp_request(request_data):
                     # Формируем подробный вывод для LLM
                     issues = result.get("issues", [])
                     
-                    # Сначала raw output - максимально подробно как в perlcritic
-                    raw = result.get("raw_output", "")
-                    if raw:
-                        response_content.append({
-                            "type": "text",
-                            "text": raw
-                        })
+                    # raw_output намеренно не передаётся LLM — засоряет контекст.
+                    # LLM получает только структурированный отчёт ниже.
                     
-                    # Краткая сводка
-                    output_lines = [f"\n=== Summary ===\nTarget: {result.get('path')}\nType: {result.get('type')}\nSeverity level: {severity}\nTotal issues found: {result['count']}\n"]
+                    # Структурированный вывод для LLM
+                    # ВАЖНО: severity=1 строжайший (все нарушения), severity=5 только критические
+                    severity_label_map = {
+                        1: "most strict (all violations)",
+                        2: "strict",
+                        3: "medium",
+                        4: "high issues only",
+                        5: "critical only"
+                    }
+                    sev_label = severity_label_map.get(severity, str(severity))
+                    _sep = "=" * 41
+                    output_lines = [f"PERL CODE ANALYSIS REPORT\n{_sep}\nFile    : {result.get('path')}\nType    : {result.get('type')}\nSeverity: {severity} ({sev_label})\nTotal   : {result['count']} issue(s) found\n"]
                     
                     if issues:
-                        output_lines.append("\n--- Parsed Issues ---\n")
-                        for i, issue in enumerate(issues, 1):
-                            file_path = issue.get('file', '')
-                            line_num = issue.get('line', '')
-                            severity = issue.get('severity', '')
-                            policy = issue.get('policy', '')
-                            issue_text = issue.get('issue', '')
-                            snippet = issue.get('snippet', {})
+                        # Group by severity
+                        by_sev = {1: [], 2: [], 3: [], 4: [], 5: []}
+                        for iss in issues:
+                            s = iss.get("severity", 3)
+                            if s in by_sev:
+                                by_sev[s].append(iss)
+                            else:
+                                by_sev[3].append(iss)
+                        
+                        # Severity labels in Russian
+                        sev_labels = {
+                            1: "САМЫЙ СТРОГИЙ (все нарушения)",
+                            2: "СТРОГИЙ",
+                            3: "СРЕДНИЙ",
+                            4: "ВЫСОКИЙ",
+                            5: "ТОЛЬКО КРИТИЧЕСКИЕ"
+                        }
+                        sev_labels_en = {1: "MOST STRICT", 2: "STRICT", 3: "MEDIUM", 4: "HIGH", 5: "CRITICAL"}
+                        
+                        output_lines.append(f"\n=== НАЙДЕНО {len(issues)} ПРОБЛЕМ ===\n")
+                        output_lines.append(f"CRITICAL: You MUST show each issue with EXACT line number! Format: 'Line NNN: issue description'\n")
+                        output_lines.append(f"Do NOT summarize - list EVERY issue separately! Showing ALL {len(issues)} issues is REQUIRED.\n\n")
+                        
+                        # Output in severity order: 1, 2, 3, 4, 5
+                        for sev_level in [1, 2, 3, 4, 5]:
+                            issues_by_level = by_sev[sev_level]
+                            if not issues_by_level:
+                                continue
                             
-                            output_lines.append(f"{i}. [{severity}] {file_path}:{line_num}\n")
-                            output_lines.append(f"   Policy: {policy}\n")
-                            output_lines.append(f"   Issue: {issue_text}\n")
+                            label = sev_labels.get(sev_level, f"Level {sev_level}")
+                            output_lines.append(f"\n--- {label} ({len(issues_by_level)} шт.) ---\n")
                             
-                            if snippet:
-                                before = snippet.get('before', [])
-                                line = snippet.get('line', '')
-                                after = snippet.get('after', [])
-                                context = snippet.get('context', '')
-                                output_lines.append(f"   Snippet ({context}):\n")
-                                for b in before:
-                                    output_lines.append(f"     | {b}\n")
-                                output_lines.append(f"     > {line}\n")
-                                for a in after:
-                                    output_lines.append(f"     | {a}\n")
-                            output_lines.append("\n")
-                    else:
+                            for i, issue in enumerate(issues_by_level, 1):
+                                i_file = issue.get("file", "")
+                                i_line = issue.get("line", "")
+                                i_col = issue.get("col", "")
+                                i_policy = issue.get("policy", "")
+                                i_msg = issue.get("issue", "")
+                                i_snippet = issue.get("snippet", "")
+                                
+                                col_str = f", Col {i_col}" if i_col else ""
+                                
+                                # Recommendation in Russian based on policy
+                                rec = get_recommendation(i_policy)
+                                
+                                output_lines.append(f"{i}. Строка {i_line}: {i_msg}\n")
+                                if rec:
+                                    output_lines.append(f"   РЕКОМЕНДАЦИЯ: {rec}\n")
+                                output_lines.append(f"   Policy: {i_policy} | Файл: {i_file}{col_str}\n")
+                                if i_snippet:
+                                    output_lines.append(f"   Код   : {i_snippet}\n")
+                                output_lines.append("\n")
+                    # Summary по severity
+                    # Напоминание: 1=строжайший (все нарушения), 5=только критические
+                    sev_counts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+                    for iss in issues:
+                        s = iss.get("severity", 3)
+                        if s in sev_counts:
+                            sev_counts[s] += 1
+                    output_lines.append("\nSUMMARY\n-------\n")
+                    output_lines.append(f"Severity 1 (most strict / all violations) : {sev_counts[1]}\n")
+                    output_lines.append(f"Severity 2 (strict)                       : {sev_counts[2]}\n")
+                    output_lines.append(f"Severity 3 (medium)                       : {sev_counts[3]}\n")
+                    output_lines.append(f"Severity 4 (high)                         : {sev_counts[4]}\n")
+                    output_lines.append(f"Severity 5 (critical only)                : {sev_counts[5]}\n")
+                    if result.get("report_file"):
+                        output_lines.append(f"\nReport saved: {result['report_file']}\n")
+                    if not issues:
                         output_lines.append("\nNo issues found. Code is clean!\n")
                     
                     response_content.append({
