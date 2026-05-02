@@ -108,18 +108,8 @@ def handle_mcp_request(request_data):
                 }
             }
         elif method == "tools/list":
-            tools = [
-                {
-                    "name": "DROSPR_JARVIS",
-                    "description": "Приветствие — просто знакомство, НЕ ищет файлы",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
-                }
-            ]
-            
+            tools = []
+
             # Добавляем perlcritic_analyze
             if PERLCRITIC_AVAILABLE:
                 tools.append({
@@ -168,14 +158,7 @@ def handle_mcp_request(request_data):
             params = request_data.get("params", {})
             tool_name = params.get("name")
             
-            if tool_name == "DROSPR_JARVIS":
-                return {
-                    "content": [{
-                        "type": "text",
-                        "text": "Привет! Я DROSPR_JARVIS — твой Perl Code Review Assistant.\n\nИспользуй perlcritic_analyze для анализа Perl кода.\n\nОсобенности:\n- severity=1 показывает ВСЕ проблемы\n- Показывает номер строки для каждой проблемы\n- Рекомендации на русском языке"
-                    }]
-                }
-            elif tool_name == "perlcritic_analyze" and PERLCRITIC_AVAILABLE:
+            if tool_name == "perlcritic_analyze" and PERLCRITIC_AVAILABLE:
                 arguments = params.get("arguments", {})
                 code = arguments.get("code")
                 filename = arguments.get("filename")
