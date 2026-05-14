@@ -1,0 +1,104 @@
+#!/bin/bash
+# pre-push hook — проверка Perl кода через MCP JARVIS перед отправкой в Bitbucket
+
+MCP_URL="http://192.168.1.106:8000"  # адрес MCP-сервера на виртуалке банка
+BLOCK_SEVERITY=4                      # блокировать при severity >= 4 (4=серьёзные, 5=критические)
+
+# Получаем список изменённых .pl и .pm файлов
+# Сначала пробуем diff относительно upstream (обычный push)
+# Если upstream не настроен (первый push) — берём последний коммит
+CHANGED=$(git diff --name-only @{u} HEAD 2>/dev/null | grep -E '\.(pl|pm)$')
+if [ -z "$CHANGED" ]; then
+    CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -E '\.(pl|pm)$')
+fi
+
+# Нет Perl-файлов в изменениях — проверка не нужна
+if [ -z "$CHANGED" ]; then
+    exit 0
+fi
+
+echo "🔍 Проверяем Perl код через MCP JARVIS..."
+
+# Собираем JSON-массив [{filename, code}, ...]
+FILES_JSON=$(python3 - "$CHANGED" <<'PYEOF'
+import sys, json
+
+changed = sys.argv[1].strip().split('\n')
+files = []
+for path in changed:
+    path = path.strip()
+    if not path:
+        continue
+    try:
+        with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+            code = f.read()
+        files.append({"filename": path, "code": code})
+    except (IOError, OSError):
+        pass  # файл удалён или недоступен — пропускаем
+
+print(json.dumps(files))
+PYEOF
+)
+
+if [ -z "$FILES_JSON" ] || [ "$FILES_JSON" = "[]" ]; then
+    exit 0
+fi
+
+# Вызываем MCP тул check_before_push
+PAYLOAD=$(python3 -c "
+import json, sys
+files = json.loads(sys.argv[1])
+payload = {
+    'jsonrpc': '2.0',
+    'id': 1,
+    'method': 'tools/call',
+    'params': {
+        'name': 'check_before_push',
+        'arguments': {
+            'files': files,
+            'block_severity': $BLOCK_SEVERITY
+        }
+    }
+}
+print(json.dumps(payload))
+" "$FILES_JSON")
+
+RESULT=$(curl -s --max-time 30 -X POST "$MCP_URL/sse" \
+    -H "Content-Type: application/json" \
+    -d "$PAYLOAD" 2>/dev/null)
+
+# MCP недоступен — fail open, не блокируем команду
+if [ $? -ne 0 ] || [ -z "$RESULT" ]; then
+    echo "⚠ MCP недоступен — проверка пропущена"
+    exit 0
+fi
+
+# Парсим результат
+ALLOW=$(python3 -c "
+import sys, json
+try:
+    data = json.loads(sys.argv[1])
+    result = data.get('result', {})
+    print(str(result.get('allow_push', True)).lower())
+except Exception:
+    print('true')
+" "$RESULT")
+
+# Выводим отчёт из MCP
+python3 -c "
+import sys, json
+try:
+    data = json.loads(sys.argv[1])
+    result = data.get('result', {})
+    content = result.get('content', [])
+    if content:
+        print(content[0].get('text', ''))
+except Exception:
+    pass
+" "$RESULT"
+
+if [ "$ALLOW" = "false" ]; then
+    exit 1
+fi
+
+exit 0

@@ -6,9 +6,11 @@
 
 import asyncio
 import json
+import os
+import secrets
 import uuid
 from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 import uvicorn
 
 # Импорт нового инструмента perlcritic_analyze
@@ -17,6 +19,18 @@ try:
     PERLCRITIC_AVAILABLE = True
 except ImportError:
     PERLCRITIC_AVAILABLE = False
+
+# Импорт PPI-индекса
+try:
+    from tools.index_store import (
+        load_index, lookup_symbol, get_file_structure,
+        get_callers, index_status, db_exists
+    )
+    INDEX_STORE_AVAILABLE = True
+except ImportError:
+    INDEX_STORE_AVAILABLE = False
+
+INDEX_TOKEN = os.environ.get("MCP_INDEX_TOKEN", "")
 
 
 app = FastAPI(title="MCP DROSPR Server")
@@ -153,6 +167,91 @@ def handle_mcp_request(request_data):
                     }
                 })
             
+            # check_before_push — pre-push git hook тул
+            if PERLCRITIC_AVAILABLE:
+                tools.append({
+                    "name": "check_before_push",
+                    "description": "Проверяет Perl файлы перед git push. Severity 4-5 блокирует пуш, severity 3 — предупреждение, 1-2 — игнорируется. Возвращает allow_push: true/false.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "files": {
+                                "type": "array",
+                                "description": "Список файлов для проверки: [{filename, code}]",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "filename": {"type": "string"},
+                                        "code": {"type": "string"}
+                                    },
+                                    "required": ["filename", "code"]
+                                }
+                            },
+                            "block_severity": {
+                                "type": "integer",
+                                "description": "Блокировать пуш при severity >= этого значения (default=4). ВАЖНО: severity=5 критические, severity=1 строжайшие.",
+                                "default": 4,
+                                "minimum": 1,
+                                "maximum": 5
+                            }
+                        },
+                        "required": ["files"]
+                    }
+                })
+
+            # Индексные тулы — только если index.db существует
+            if INDEX_STORE_AVAILABLE and db_exists():
+                tools.append({
+                    "name": "lookup_symbol",
+                    "description": "Найти где определена функция или метод в Perl-проекте. Возвращает файл, номера строк, пакет.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Имя функции или метода для поиска"
+                            }
+                        },
+                        "required": ["name"]
+                    }
+                })
+                tools.append({
+                    "name": "get_file_structure",
+                    "description": "Карта Perl-файла: все функции с номерами строк, импорты (use/require), глобальные переменные.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "filepath": {
+                                "type": "string",
+                                "description": "Относительный путь к файлу внутри проекта, например 'Finance/Billing.pm'"
+                            }
+                        },
+                        "required": ["filepath"]
+                    }
+                })
+                tools.append({
+                    "name": "get_callers",
+                    "description": "Найти все места в проекте где реально вызывается данная функция. Только фактические вызовы, не комментарии.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Имя функции"
+                            }
+                        },
+                        "required": ["name"]
+                    }
+                })
+                tools.append({
+                    "name": "index_status",
+                    "description": "Информация об индексе: когда обновлялся, сколько файлов проиндексировано.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                })
+
             return {"tools": tools}
         elif method == "tools/call":
             params = request_data.get("params", {})
@@ -294,6 +393,143 @@ def handle_mcp_request(request_data):
                     "content": response_content,
                     "report": result
                 }
+            elif tool_name == "check_before_push" and PERLCRITIC_AVAILABLE:
+                arguments = params.get("arguments", {})
+                files = arguments.get("files", [])
+                block_severity = arguments.get("block_severity", 4)
+
+                if not files:
+                    return {"content": [{"type": "text", "text": "ERROR: параметр 'files' обязателен и не должен быть пустым"}]}
+
+                file_results = []
+                has_blocker = False
+
+                for f in files:
+                    fname = f.get("filename", "unknown")
+                    code = f.get("code", "")
+                    result = analyze_perl_critic(code=code, filename=fname, severity=1)
+                    issues = result.get("issues", [])
+
+                    blockers = [i for i in issues if i.get("severity", 0) >= block_severity]
+                    warnings = [i for i in issues if i.get("severity", 0) == 3 and i.get("severity", 0) < block_severity]
+
+                    if blockers:
+                        has_blocker = True
+
+                    file_results.append({
+                        "filename": fname,
+                        "blockers": blockers,
+                        "warnings": warnings,
+                        "total": len(blockers) + len(warnings),
+                    })
+
+                # Формируем текстовый отчёт для вывода в консоль
+                lines = ["PUSH CHECK RESULT\n=================\n"]
+                lines.append(f"Files checked: {len(file_results)}\n")
+                lines.append(f"Decision: {'BLOCKED' if has_blocker else 'OK'}\n\n")
+
+                for fr in file_results:
+                    if fr["blockers"]:
+                        lines.append(f"❌ {fr['filename']}\n")
+                        for b in fr["blockers"]:
+                            lines.append(f"  Строка {b['line']}: {b['issue']} (severity {b['severity']})\n")
+                            rec = get_recommendation(b.get("policy", ""))
+                            if rec:
+                                lines.append(f"  → {rec}\n")
+                    if fr["warnings"]:
+                        lines.append(f"⚠ {fr['filename']}\n" if not fr["blockers"] else "")
+                        for w in fr["warnings"]:
+                            lines.append(f"  Строка {w['line']}: {w['issue']} (severity {w['severity']}) — WARNING\n")
+
+                if has_blocker:
+                    lines.append("\nСТОП: исправь ошибки выше и попробуй снова.\n")
+                elif any(fr["warnings"] for fr in file_results):
+                    lines.append("\nПуш прошёл. Обрати внимание на предупреждения выше.\n")
+                else:
+                    lines.append("\n✅ Код чистый. Пуш разрешён.\n")
+
+                return {
+                    "content": [{"type": "text", "text": "".join(lines)}],
+                    "allow_push": not has_blocker,
+                    "files_checked": len(file_results),
+                    "files": file_results,
+                }
+
+            elif INDEX_STORE_AVAILABLE and tool_name in (
+                "lookup_symbol", "get_file_structure", "get_callers", "index_status"
+            ):
+                arguments = params.get("arguments", {})
+
+                if tool_name == "lookup_symbol":
+                    name = arguments.get("name", "").strip()
+                    if not name:
+                        text = "ERROR: параметр 'name' обязателен"
+                    else:
+                        results = lookup_symbol(name)
+                        if results:
+                            lines = [f"Функция '{name}' определена в {len(results)} месте(ах):\n"]
+                            for r in results:
+                                lines.append(
+                                    f"  {r['file']} — строки {r['line_start']}–{r['line_end']}"
+                                    + (f"  (package {r['package']})" if r.get('package') else "")
+                                    + "\n"
+                                )
+                            text = "".join(lines)
+                        else:
+                            text = f"Функция '{name}' не найдена в индексе."
+
+                elif tool_name == "get_file_structure":
+                    filepath = arguments.get("filepath", "").strip()
+                    if not filepath:
+                        text = "ERROR: параметр 'filepath' обязателен"
+                    else:
+                        s = get_file_structure(filepath)
+                        if not s.get("functions") and not s.get("imports"):
+                            text = f"Файл '{filepath}' не найден в индексе."
+                        else:
+                            lines = [f"Структура файла: {filepath}\n"]
+                            if s.get("functions"):
+                                lines.append(f"\nФункции ({len(s['functions'])}):\n")
+                                for f in s["functions"]:
+                                    lines.append(f"  {f['name']} — строки {f['line_start']}–{f['line_end']}\n")
+                            if s.get("imports"):
+                                lines.append(f"\nИмпорты ({len(s['imports'])}):\n")
+                                for i in s["imports"]:
+                                    lines.append(f"  {i['type']} {i['module']} (строка {i['line']})\n")
+                            if s.get("globals"):
+                                lines.append(f"\nГлобальные переменные:\n")
+                                for g in s["globals"]:
+                                    lines.append(f"  {g}\n")
+                            text = "".join(lines)
+
+                elif tool_name == "get_callers":
+                    name = arguments.get("name", "").strip()
+                    if not name:
+                        text = "ERROR: параметр 'name' обязателен"
+                    else:
+                        results = get_callers(name)
+                        if results:
+                            lines = [f"Функция '{name}' вызывается в {len(results)} месте(ах):\n"]
+                            for r in results:
+                                lines.append(f"  {r['caller_file']}:{r['caller_line']}\n")
+                            text = "".join(lines)
+                        else:
+                            text = f"Вызовы функции '{name}' не найдены в индексе."
+
+                elif tool_name == "index_status":
+                    s = index_status()
+                    if not s.get("available"):
+                        text = "Индекс не загружен."
+                    else:
+                        text = (
+                            f"Индекс актуален на: {s.get('built_at', 'неизвестно')}\n"
+                            f"Проект: {s.get('project', '—')}\n"
+                            f"Файлов: {s.get('file_count', '—')}\n"
+                            f"Ошибок парсинга: {s.get('failed_count', '0')}"
+                        )
+
+                return {"content": [{"type": "text", "text": text}]}
+
             else:
                 return {"error": {"code": -32601, "message": f"Unknown tool: {tool_name}"}}
         else:
@@ -429,6 +665,33 @@ async def post_root(request: Request):
             "id": None,
             "error": {"code": -32603, "message": str(e)}
         }
+
+
+@app.post("/index/upload")
+async def index_upload(request: Request):
+    """Принимает PPI-индекс от TeamCity. Bearer token обязателен."""
+    if not INDEX_STORE_AVAILABLE:
+        return JSONResponse(status_code=503, content={"error": "index_store not available"})
+
+    # Проверка токена
+    auth = request.headers.get("Authorization", "")
+    if not INDEX_TOKEN:
+        return JSONResponse(status_code=503, content={"error": "MCP_INDEX_TOKEN not configured"})
+    if not auth.startswith("Bearer ") or not secrets.compare_digest(
+        auth[len("Bearer "):].strip(), INDEX_TOKEN
+    ):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    body = await request.body()
+    if not body:
+        return JSONResponse(status_code=400, content={"error": "Empty body"})
+
+    try:
+        compressed = request.headers.get("Content-Encoding", "") == "gzip"
+        stats = await asyncio.to_thread(load_index, body, compressed)
+        return {"ok": True, **stats}
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
 
 
 if __name__ == "__main__":
