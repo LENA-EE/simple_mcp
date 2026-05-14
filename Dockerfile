@@ -10,12 +10,13 @@ RUN apt-get update && apt-get install -y \
     cpanminus \
     && rm -rf /var/lib/apt/lists/*
 
-# Устанавливаем Perl::Critic через cpanm (быстро и тихо)
-RUN cpanm --notest --quiet Perl::Critic && \
-    # Проверяем установку
+# Устанавливаем Perl-модули
+RUN cpanm --notest --quiet Perl::Critic PPI JSON::PP && \
     perlcritic --version && \
-    # Создаем симлинк для гарантированного доступа
     ln -sf /usr/local/bin/perlcritic /usr/bin/perlcritic
+
+# Директория для SQLite-индекса
+RUN mkdir -p /app/data
 
 # Копируем файлы зависимостей
 COPY pyproject.toml .

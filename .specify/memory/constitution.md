@@ -1,50 +1,146 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+Sync Impact Report
+==================
+Version change: (template) → 1.0.0
+Added: все принципы (первая живая версия на основе CLAUDE.md, JARVIS.md, целевой_вариант.md)
+Templates requiring updates: ✅ constitution.md заполнена
+Follow-up TODOs: ratification date приблизительная (проект начат ~апрель 2026)
+-->
+
+# DROSPR JARVIS Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Harness over Model
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+MCP-сервер, git хуки, PPI-индекс, PR-бот — это harness (капитальный актив).
+Феникс/Qwen — это model (заменяемая часть, ~1.6% системы).
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+Когда модель поменяется — harness остаётся. Архитектурные решения ДОЛЖНЫ
+исходить из этого: логика в коде, не в промпте.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### II. Код, не путь
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+MCP-сервер работает в Docker на виртуалке банка. Доступа к файловой системе
+разработчика нет и не будет.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+- Параметр `code` (строка с содержимым файла) — ОБЯЗАТЕЛЕН для всех инструментов анализа.
+- Параметр `target` (путь к файлу) — НЕ использовать в новых инструментах.
+- IDE/хук читает файл локально и передаёт содержимое строкой.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### III. Severity в Perl::Critic — шкала обратная (NON-NEGOTIABLE)
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+```
+severity=1 → СТРОЖАЙШИЙ (стиль, все нарушения)
+severity=5 → ТОЛЬКО КРИТИЧЕСКИЕ
+```
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+Это противоположно интуиции. LLM-агенты путают постоянно.
+КАЖДЫЙ новый инструмент ДОЛЖЕН документировать это явно в описании параметра.
+Логика блокировки: блокировать при `issue["severity"] >= 4` (серьёзные и критические).
+
+### IV. Контекстная инженерия — минимум токенов
+
+Феникс получает только то что нужно для ответа, не файл целиком.
+
+- `raw_output` perlcritic НИКОГДА не передаётся LLM — только структурированные issues.
+- PPI говорит ЧТО важно → Bitbucket достаёт только это → Феникс получает ~70 строк вместо 2000.
+- Каждый инструмент ДОЛЖЕН минимизировать токены на вызов.
+
+### V. Fail Open
+
+Если MCP-сервер недоступен — разработчик НЕ должен быть заблокирован.
+
+- pre-push хук: таймаут 30с, затем `exit 0` с предупреждением.
+- Инструменты без `index.db`: не регистрируются в `tools/list`, не падают.
+- Падение инфраструктуры не останавливает команду.
+
+### VI. Атомарная замена индекса
+
+При обновлении PPI-индекса: писать в `index_new.db`, затем `os.replace()`.
+Читающие запросы никогда не видят полуготовый индекс.
+
+### VII. Три компонента — три зоны ответственности
+
+```
+mcp-drospr    → структура кода (perlcritic, PPI, символьный индекс)
+mcp-bitbucket → история и содержимое (git blame, diff, файлы)
+pr-reviewer-bot → PR workflow (webhook, комментарии в Bitbucket)
+```
+
+Смешивать зоны ЗАПРЕЩЕНО. Новый функционал идёт в правильный компонент.
+
+### VIII. Добавлять только когда боль стала реальной
+
+Не добавлять RAG, LiteLLM, Guardian, ChromaDB и прочее заранее.
+Добавлять только когда конкретная проблема мешает работе прямо сейчас.
+"Понадобится потом" — не основание.
+
+### IX. Данные не покидают периметр банка
+
+Никаких внешних API, облачных сервисов, внешних LLM.
+Феникс/Qwen — локально. MCP-сервер — на виртуалке банка.
+Это не опция, это требование безопасности.
+
+### X. Человек принимает решение
+
+Агент предлагает — человек применяет. Необратимые действия (применение патча,
+удаление кода, изменение конфига продакшена) ВСЕГДА требуют подтверждения разработчика.
+
+## Дорожная карта (текущий статус)
+
+```
+Фаза 1 — Линтер         ✅ ГОТОВО
+  perlcritic_analyze    ✅
+  check_before_push     ✅ (ветка 002, коммит 9948404)
+  pre-push git hook     ✅
+
+Фаза 2 — Symbol Index   🔄 КОД ГОТОВ, ждёт TeamCity
+  lookup_symbol         ✅ код (gated за db_exists())
+  get_file_structure    ✅ код (gated за db_exists())
+  get_callers           ✅ код (gated за db_exists())
+  build_index.pl        ✅ написан, нужен тест на реальном .pm
+  POST /index/upload    ✅ реализован
+
+Фаза 3 — PR Reviewer Bot  📋 дизайн готов
+  mcp-bitbucket         📋 не начат
+  pr-reviewer-bot       📋 webhook настроен на тест-репо
+
+Фаза 4 — RAG            ⏸ отложено до боли
+```
+
+## Разработка
+
+### Процесс добавления нового инструмента (SDD через speckit)
+
+```
+/speckit.specify → спека с acceptance criteria
+/speckit.plan    → архитектурный план
+/speckit.tasks   → задачи с порядком выполнения
+→ реализация → тест через curl → коммит
+```
+
+### Инструмент регистрируется в tools/list если
+
+- `perlcritic_analyze`, `check_before_push`: `PERLCRITIC_AVAILABLE` (бинарник в PATH)
+- `lookup_symbol`, `get_file_structure`, `get_callers`, `index_status`: `db_exists()`
+
+### Что проверить в каждом новом инструменте
+
+- [ ] Severity описан правильно (обратная шкала явно указана)
+- [ ] Принимает `code`, не `target`/`path`
+- [ ] `raw_output` не идёт в LLM
+- [ ] Поведение при недоступном perlcritic/индексе описано
+- [ ] Добавлен в правильную зону ответственности (принцип VII)
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+Конституция — главный источник правды для архитектурных решений.
+При конфликте между конституцией и другим документом — конституция побеждает.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+Устаревшие документы: `JARVIS.md`, `целевой_вариант.md`, `VALUE_PROPOSITION.md` —
+исторический контекст, не руководство к действию. Актуален `CLAUDE.md` + эта конституция.
+
+Поправка требует: обновить этот файл + обновить `CLAUDE.md` если затронуто.
+
+**Version**: 1.0.0 | **Ratified**: 2026-04-21 | **Last Amended**: 2026-05-14
