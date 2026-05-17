@@ -2,6 +2,8 @@
 
 MCP-сервер для анализа Perl кода с помощью Perl::Critic.
 
+> Проект следует [AI Engineering Standard (AES) v1.2](https://github.com/LENA-EE/AI-Engineering-Standard-AES), уровень **AES-L1**. См. [`PROJECT_CONSTITUTION.md`](PROJECT_CONSTITUTION.md) и [`CLAUDE.md`](CLAUDE.md).
+
 ## Инструменты
 
 ### `perlcritic_analyze`
