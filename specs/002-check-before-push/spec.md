@@ -2,7 +2,8 @@
 
 **Feature Branch**: `002-check-before-push`
 **Created**: 2026-05-14
-**Status**: Draft
+**Approved**: 2026-05-17 (фича в проде, pre-push хук работает у разработчиков)
+**Status**: Approved
 
 ## Контекст
 

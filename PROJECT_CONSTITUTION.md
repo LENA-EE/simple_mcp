@@ -3,7 +3,7 @@
 ## DROSPR JARVIS — MCP-сервер анализа Perl-кода
 
 Стандарт: [AI Engineering Standard (AES) v1.2](https://github.com/LENA-EE/AI-Engineering-Standard-AES)
-Уровень соответствия: **AES-L1** (конституция заполнена)
+Уровень соответствия: **AES-L2** (конституция + approved spec с plan.md в `specs/`)
 Статус: Активна
 
 ---

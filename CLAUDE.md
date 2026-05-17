@@ -1,8 +1,8 @@
 # CLAUDE.md — Исполнительный контракт агента
 
 **Стандарт:** [AI Engineering Standard (AES) v1.2](https://github.com/LENA-EE/AI-Engineering-Standard-AES)
-**Compliance Level:** AES-L1 (`PROJECT_CONSTITUTION.md` заполнен)
-**Цель в зрелости:** AES-L2 (заполнить `specs/` спецификациями с `plan.md`)
+**Compliance Level:** AES-L2 (конституция + approved spec.md + plan.md в `specs/`)
+**Цель в зрелости:** AES-L3 (CLAUDE.md настроен, 0 AES violations в последнем PR)
 
 > Этот файл — нормативный контракт между Human Architect и AI-агентом для репозитория `mcp-drospr`.
 > Базовые правила наследуются из AES v1.2 (`CLAUDE.md` стандарта) — см. ссылку выше. Здесь зафиксированы **проектно-специфичные дополнения и обязательные нотификации**, которые ловят реальные ошибки в этом проекте.
@@ -248,4 +248,4 @@ curl -s -X POST http://localhost:8000/sse \
 
 ---
 
-*Conforms to [AES v1.2](https://github.com/LENA-EE/AI-Engineering-Standard-AES). Compliance Level: L1 → L2 (target).*
+*Conforms to [AES v1.2](https://github.com/LENA-EE/AI-Engineering-Standard-AES). Compliance Level: L2 → L3 (target).*

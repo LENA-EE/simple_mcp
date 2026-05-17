@@ -2,7 +2,8 @@
 
 **Feature Branch**: `003-fix-perlcritic-report-leak`
 **Created**: 2026-05-17
-**Status**: Draft
+**Approved**: 2026-05-17 (реализовано, smoke test в Docker — PASS, в main)
+**Status**: Approved
 
 ## Контекст
 
