@@ -378,8 +378,6 @@ def handle_mcp_request(request_data):
                     output_lines.append(f"Severity 3 (medium)                       : {sev_counts[3]}\n")
                     output_lines.append(f"Severity 4 (high)                         : {sev_counts[4]}\n")
                     output_lines.append(f"Severity 5 (critical only)                : {sev_counts[5]}\n")
-                    if result.get("report_file"):
-                        output_lines.append(f"\nReport saved: {result['report_file']}\n")
                     if not issues:
                         output_lines.append("\nNo issues found. Code is clean!\n")
                     

@@ -243,15 +243,9 @@ def analyze_perl_critic(
 
     issues = parse_perlcritic_output_tsv(output, code_lines)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    base_name = os.path.basename(target.rstrip("/\\")) or "analysis"
-    report_filename = f"perlcritic_report_{base_name}_{timestamp}.json"
-
-    if os.path.isdir(target):
-        report_path = os.path.join(target, report_filename)
-    else:
-        report_path = os.path.join(os.path.dirname(target), report_filename)
-
+    # report_file намеренно None: JSON-отчёт на диск не пишется.
+    # Содержимое отчёта уже возвращается через JSON-RPC ответ MCP — файл на
+    # диске был дублем и накапливался в /tmp без ротации. См. spec 003.
     report = {
         "path": os.path.abspath(target),
         "type": target_type,
@@ -261,15 +255,9 @@ def analyze_perl_critic(
         # Для отладки раскомментировать:
         # "raw_output": output.strip(),
         "error": None,
-        "report_file": report_path,
+        "report_file": None,
         "timestamp": datetime.now().isoformat()
     }
-
-    try:
-        with open(report_path, "w", encoding="utf-8") as f:
-            json.dump(report, f, indent=2, ensure_ascii=False)
-    except (IOError, OSError):
-        report["report_file"] = None
 
     if temp_file and os.path.exists(temp_file):
         try:
